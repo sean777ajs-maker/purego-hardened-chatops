@@ -1,0 +1,145 @@
+name: ChatOps 24/7 Cloud-Only Loop
+
+on:
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  cloud-chatops:
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Execute command loop
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const https = require('https');
+            const { execFileSync } = require('child_process');
+
+            const isCron = context.eventName === 'schedule';
+            const rawBody = context.payload.comment?.body?.trim() || (context.eventName === 'issue_comment' ? '' : '/status');
+            const cmd = rawBody.split(/\s+/)[0].toLowerCase();
+            const issueNumber = context.payload.issue?.number || 1;
+            const knownCommands = [
+              '/status', '/catalog-count', '/lockdown-check', '/help', '/audit-muse',
+              '/linkedin-status', '/linkedin-resume', '/token-status',
+              '/watchdog-status', '/sandbox-status', '/investment-status'
+            ];
+            if (!knownCommands.includes(cmd)) return;
+
+            function probeUrl(url) {
+              return new Promise((resolve) => {
+                const start = Date.now();
+                let settled = false;
+                const finish = (result) => {
+                  if (!settled) {
+                    settled = true;
+                    clearTimeout(timer);
+                    resolve({ ms: Date.now() - start, ...result });
+                  }
+                };
+                const req = https.get(url, (res) => {
+                  const tls = res.socket?.getProtocol() || 'unknown';
+                  let body = '';
+                  res.setEncoding('utf8');
+                  res.on('data', (chunk) => {
+                    body += chunk;
+                    if (Buffer.byteLength(body) > 2 * 1024 * 1024) {
+                      finish({ ok: false, status: res.statusCode, tls, error: 'response too large', body: '' });
+                      req.destroy();
+                    }
+                  });
+                  res.on('end', () => finish({
+                    ok: res.statusCode >= 200 && res.statusCode < 400,
+                    status: res.statusCode, tls, headers: res.headers, body
+                  }));
+                  res.on('error', (err) => finish({ ok: false, status: res.statusCode, tls, error: err.message, body: '' }));
+                  res.on('aborted', () => finish({ ok: false, status: res.statusCode, tls, error: 'response aborted', body: '' }));
+                });
+                const timer = setTimeout(() => {
+                  finish({ ok: false, status: 0, tls: 'none', error: 'timeout', body: '' });
+                  req.destroy();
+                }, 10000);
+                req.on('error', (err) => finish({ ok: false, status: 0, tls: 'none', error: err.message, body: '' }));
+              });
+            }
+
+            let reply;
+            const ts = new Date().toISOString();
+            if (cmd === '/audit-muse') {
+              let findings;
+              try {
+                const out = execFileSync('grep', [
+                  '-rnI', '-E', 'ssh-rsa|ssh-ed25519|authorized_keys|ngrok|cloudflared|socat|nc -e|/dev/tcp',
+                  '.', '--exclude-dir=.git', '--exclude=chatops-mobile.yml'
+                ], { encoding: 'utf8', maxBuffer: 1024 * 1024 }).trim();
+                findings = `Suspicious patterns found:\n\`\`\`\n${out.slice(0, 1200)}\n\`\`\``;
+              } catch (error) {
+                findings = error.status === 1 ? 'No matching patterns found.' : 'Scan failed; check the workflow logs.';
+                if (error.status !== 1) core.warning(`Audit scan failed: ${error.message}`);
+              }
+              reply = `### 🛡️ Security & Drift Audit (${ts})\n- **Workflow token:** contents read, issues write\n- **Scan result:** ${findings}\n- This pattern scan cannot establish that the repository is free of backdoors.`;
+            } else if (cmd === '/help') {
+              reply = `### ☁️ GitHub Native Command Center (${ts})\n` +
+                `- **Security audit:** \`/audit-muse\`, \`/lockdown-check\`, \`/sandbox-status\`\n` +
+                `- **Public probes:** \`/status\`, \`/catalog-count\`\n` +
+                `- **Other commands:** \`/linkedin-status\`, \`/linkedin-resume\`, \`/token-status\`, \`/watchdog-status\`, \`/investment-status\` (not integrated)`;
+            } else if (cmd === '/status') {
+              const [site, catalog] = await Promise.all([
+                probeUrl('https://vegasdiscountdepot.com/'),
+                probeUrl('https://vegasdiscountdepot.com/catalog.json')
+              ]);
+              if (isCron && site.ok && catalog.ok) return;
+              reply = `### Cloud Loop Status (${ts})\n` +
+                `| Target | HTTP | Latency | TLS | State |\n|---|---|---|---|---|\n` +
+                `| \`vegasdiscountdepot.com/\` | ${site.status} | ${site.ms}ms | ${site.tls} | ${site.ok ? '✅ UP' : '❌ DOWN'} |\n` +
+                `| \`/catalog.json\` | ${catalog.status} | ${catalog.ms}ms | ${catalog.tls} | ${catalog.ok ? '✅ UP' : '❌ DOWN'} |`;
+            } else if (cmd === '/catalog-count') {
+              const r = await probeUrl('https://vegasdiscountdepot.com/catalog.json');
+              let countInfo = 'Unavailable';
+              if (r.ok) {
+                try {
+                  const parsed = JSON.parse(r.body);
+                  const items = Array.isArray(parsed) ? parsed : (parsed?.items ?? parsed?.products);
+                  if (Array.isArray(items)) countInfo = `**${items.length}** items`;
+                } catch (error) {
+                  countInfo = 'Invalid JSON';
+                }
+              }
+              reply = `### 📦 Live Cloud Catalog (${ts})\n- **HTTP status:** ${r.status} (${r.ms}ms)\n- **Catalog size:** ${countInfo}`;
+            } else if (cmd === '/lockdown-check' || cmd === '/sandbox-status') {
+              const r = await probeUrl('https://vegasdiscountdepot.com/');
+              const h = r.headers || {};
+              reply = `### 🔒 Cloud Sandbox Posture (${ts})\n` +
+                `- **Runner:** GitHub-hosted; workflow token has contents read and issues write\n` +
+                `- **Negotiated protocol:** \`${r.tls}\`\n` +
+                `- **HSTS:** \`${h['strict-transport-security'] || 'missing'}\`\n` +
+                `- **X-Content-Type-Options:** \`${h['x-content-type-options'] || 'missing'}\`\n` +
+                `- **X-Frame-Options:** \`${h['x-frame-options'] || 'missing'}\``;
+            } else {
+              reply = `### Cloud Status for \`${cmd}\` (${ts})\nThis command is not integrated; no external state was checked or changed.`;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: reply
+            });
