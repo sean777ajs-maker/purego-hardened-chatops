@@ -6,10 +6,20 @@ on:
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
+    inputs:
+      command:
+        description: ChatOps command
+        required: true
+        default: /status
+      issue_number:
+        description: Issue or pull request number for the reply
+        required: true
+        default: '1'
 
 permissions:
   contents: read
   issues: write
+  actions: read
 
 jobs:
   cloud-chatops:
@@ -21,125 +31,151 @@ jobs:
         github.event.comment.author_association == 'MEMBER' ||
         github.event.comment.author_association == 'COLLABORATOR'))
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Execute command loop
+      - name: Resolve command
+        id: command
         uses: actions/github-script@v7
         with:
           script: |
-            const https = require('https');
+            const body = context.eventName === 'issue_comment'
+              ? context.payload.comment.body
+              : context.eventName === 'workflow_dispatch'
+                ? context.payload.inputs.command : '/status';
+            const command = (body || '').trim().split(/\s+/)[0].toLowerCase();
+            const issue = context.eventName === 'issue_comment'
+              ? String(context.payload.issue.number)
+              : context.eventName === 'workflow_dispatch'
+                ? context.payload.inputs.issue_number : '1';
+            if (!/^[1-9]\d*$/.test(issue) || !Number.isSafeInteger(Number(issue))) {
+              throw new Error('issue_number must be a positive issue number');
+            }
+            const supported = ['/status', '/catalog-count', '/lockdown-check', '/help',
+              '/audit-muse', '/iso-build', '/token-status', '/watchdog-status',
+              '/linkedin-status', '/linkedin-resume', '/sandbox-status', '/investment-status'];
+            core.setOutput('name', supported.includes(command) ? command : '');
+            core.setOutput('issue', issue);
+      - uses: actions/checkout@v4
+        if: steps.command.outputs.name != ''
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        if: steps.command.outputs.name != ''
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Probe public services
+        if: contains(fromJSON('["/status","/catalog-count","/lockdown-check","/sandbox-status"]'), steps.command.outputs.name)
+        run: go run ./cmd/statusprobe -json "$RUNNER_TEMP/chatops-status.json"
+      - name: Build and verify ISO on hosted runner
+        if: steps.command.outputs.name == '/iso-build'
+        id: iso
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86
+          mkdir -p build
+          base=https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64
+          curl -fsSL "$base/alpine-virt-3.20.0-x86_64.iso" -o build/alpine-virt-3.20.0-x86_64.iso
+          curl -fsSL "$base/alpine-virt-3.20.0-x86_64.iso.sha256" -o build/alpine.sha256
+          (cd build && sha256sum -c alpine.sha256)
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o build/init ./cmd/init
+          go run ./cmd/mkcpio build
+          go run ./cmd/mkiso build
+          sha256sum build/purego-appliance.iso > build/iso.sha256
+          qemu-system-x86_64 -m 512M -cdrom build/purego-appliance.iso \
+            -display none -serial file:build/serial.log \
+            -netdev user,id=net0,hostfwd=tcp:127.0.0.1:8080-:80,hostfwd=tcp:127.0.0.1:8443-:443 \
+            -device virtio-net-pci,netdev=net0 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          ready=false
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8080/health > build/health.json; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != true ]; then
+            cat build/serial.log
+            exit 1
+          fi
+          curl -kfsS --tlsv1.3 --tls-max 1.3 --max-time 5 https://127.0.0.1:8443/health > build/https-health.json
+      - name: Upload ISO
+        if: steps.iso.outcome == 'success'
+        id: artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: purego-appliance-iso
+          path: |
+            build/purego-appliance.iso
+            build/iso.sha256
+            build/health.json
+            build/https-health.json
+            build/serial.log
+          if-no-files-found: error
+      - name: Post command response
+        if: always() && steps.command.outputs.name != '' && steps.command.outcome == 'success'
+        uses: actions/github-script@v7
+        env:
+          COMMAND: ${{ steps.command.outputs.name }}
+          ISSUE_NUMBER: ${{ steps.command.outputs.issue }}
+          ISO_OUTCOME: ${{ steps.iso.outcome }}
+          ARTIFACT_OUTCOME: ${{ steps.artifact.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
             const { execFileSync } = require('child_process');
-
-            const isCron = context.eventName === 'schedule';
-            const rawBody = context.payload.comment?.body?.trim() || (context.eventName === 'issue_comment' ? '' : '/status');
-            const cmd = rawBody.split(/\s+/)[0].toLowerCase();
-            const issueNumber = context.payload.issue?.number || 1;
-            const knownCommands = [
-              '/status', '/catalog-count', '/lockdown-check', '/help', '/audit-muse',
-              '/linkedin-status', '/linkedin-resume', '/token-status',
-              '/watchdog-status', '/sandbox-status', '/investment-status'
-            ];
-            if (!knownCommands.includes(cmd)) return;
-
-            function probeUrl(url) {
-              return new Promise((resolve) => {
-                const start = Date.now();
-                let settled = false;
-                const finish = (result) => {
-                  if (!settled) {
-                    settled = true;
-                    clearTimeout(timer);
-                    resolve({ ms: Date.now() - start, ...result });
-                  }
-                };
-                const req = https.get(url, (res) => {
-                  const tls = res.socket?.getProtocol() || 'unknown';
-                  let body = '';
-                  res.setEncoding('utf8');
-                  res.on('data', (chunk) => {
-                    body += chunk;
-                    if (Buffer.byteLength(body) > 2 * 1024 * 1024) {
-                      finish({ ok: false, status: res.statusCode, tls, error: 'response too large', body: '' });
-                      req.destroy();
-                    }
-                  });
-                  res.on('end', () => finish({
-                    ok: res.statusCode >= 200 && res.statusCode < 400,
-                    status: res.statusCode, tls, headers: res.headers, body
-                  }));
-                  res.on('error', (err) => finish({ ok: false, status: res.statusCode, tls, error: err.message, body: '' }));
-                  res.on('aborted', () => finish({ ok: false, status: res.statusCode, tls, error: 'response aborted', body: '' }));
-                });
-                const timer = setTimeout(() => {
-                  finish({ ok: false, status: 0, tls: 'none', error: 'timeout', body: '' });
-                  req.destroy();
-                }, 10000);
-                req.on('error', (err) => finish({ ok: false, status: 0, tls: 'none', error: err.message, body: '' }));
-              });
-            }
-
+            const cmd = process.env.COMMAND;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const now = new Date().toISOString();
             let reply;
-            const ts = new Date().toISOString();
-            if (cmd === '/audit-muse') {
-              let findings;
+            let report;
+            try { report = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/chatops-status.json`, 'utf8')); } catch {}
+            if (['/status', '/catalog-count', '/lockdown-check', '/sandbox-status'].includes(cmd)) {
+              if (!report) {
+                reply = `### Probe failed (${now})\nSee [workflow run](${runUrl}).`;
+              } else if (cmd === '/catalog-count') {
+                reply = `### Catalog count (${report.timestamp})\n${report.catalog.count === null ? 'Unavailable' : report.catalog.count} items (HTTP ${report.catalog.status}).`;
+              } else if (cmd === '/lockdown-check') {
+                const routes = report.lockdown.routes.map(r => `| ${r.url} | ${r.status || 'unavailable'} |`).join('\n');
+                const holding = report.lockdown.routes.filter(r => r.status === 403 && !r.error).length;
+                reply = `### Lockdown: ${report.lockdown.state} (${report.timestamp})\n${holding}/8 routes returned HTTP 403.\n\n| Route | HTTP |\n|---|---|\n${routes}`;
+              } else if (cmd === '/status') {
+                if (context.eventName === 'schedule' && report.storefront.state === 'UP' && report.catalog.state === 'UP' && report.catalog.count !== null && report.lockdown.state === 'HOLDING') return;
+                reply = `### Cloud status (${report.timestamp})\n- Storefront: ${report.storefront.state} (HTTP ${report.storefront.status})\n- Catalog: ${report.catalog.count === null ? 'unavailable' : report.catalog.count + ' items'}\n- Lockdown: ${report.lockdown.state}`;
+              } else {
+                reply = `### Sandbox status (${report.timestamp})\n- Runner: GitHub-hosted\n- Workflow permissions: contents read, issues write, actions read\n- Lockdown: ${report.lockdown.state}`;
+              }
+            } else if (cmd === '/iso-build') {
+              if (process.env.ISO_OUTCOME === 'success' && process.env.ARTIFACT_OUTCOME === 'success') {
+                const sha = fs.readFileSync('build/iso.sha256', 'utf8').trim().split(/\s+/)[0];
+                const health = fs.readFileSync('build/health.json', 'utf8').trim();
+                reply = `### ISO build complete\n- SHA-256: \`${sha}\`\n- HTTP health: \`${health}\`\n- HTTPS TLS 1.3 health: \`${fs.readFileSync('build/https-health.json', 'utf8').trim()}\`\n- [Run and artifact](${runUrl})`;
+              } else {
+                reply = `### ISO build failed\nSee [workflow run](${runUrl}).`;
+              }
+            } else if (cmd === '/watchdog-status') {
               try {
-                const out = execFileSync('grep', [
-                  '-rnI', '-E', 'ssh-rsa|ssh-ed25519|authorized_keys|ngrok|cloudflared|socat|nc -e|/dev/tcp',
-                  '.', '--exclude-dir=.git', '--exclude=chatops-mobile.yml'
-                ], { encoding: 'utf8', maxBuffer: 1024 * 1024 }).trim();
-                findings = `Suspicious patterns found:\n\`\`\`\n${out.slice(0, 1200)}\n\`\`\``;
+                const { data } = await github.rest.actions.listWorkflowRuns({ ...context.repo, workflow_id: 'watchdog-probe.yml', per_page: 1 });
+                const last = data.workflow_runs[0];
+                reply = last ? `### Watchdog status\nLatest run: [${last.status}${last.conclusion ? ` / ${last.conclusion}` : ''}](${last.html_url}), started ${last.created_at}.` : '### Watchdog status\nNo runs found.';
               } catch (error) {
-                findings = error.status === 1 ? 'No matching patterns found.' : 'Scan failed; check the workflow logs.';
-                if (error.status !== 1) core.warning(`Audit scan failed: ${error.message}`);
+                reply = `### Watchdog status\nUnavailable: ${error.status || 'request failed'}.`;
               }
-              reply = `### 🛡️ Security & Drift Audit (${ts})\n- **Workflow token:** contents read, issues write\n- **Scan result:** ${findings}\n- This pattern scan cannot establish that the repository is free of backdoors.`;
+            } else if (cmd === '/token-status') {
+              reply = '### Token status\nThis workflow requests contents read, issues write and actions read. External token status is not configured.';
+            } else if (cmd === '/audit-muse') {
+              try {
+                const out = execFileSync('grep', ['-rnI', '-E', 'ssh-rsa|ssh-ed25519|authorized_keys|ngrok|cloudflared|socat|nc -e|/dev/tcp', '.', '--exclude-dir=.git', '--exclude=chatops-mobile.yml'], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+                reply = `### Pattern audit\nMatches found:\n\`\`\`\n${out.slice(0, 1200)}\n\`\`\``;
+              } catch (error) {
+                reply = error.status === 1 ? '### Pattern audit\nNo matching patterns found. This is not a comprehensive security audit.' : '### Pattern audit\nScan failed.';
+              }
             } else if (cmd === '/help') {
-              reply = `### ☁️ GitHub Native Command Center (${ts})\n` +
-                `- **Security audit:** \`/audit-muse\`, \`/lockdown-check\`, \`/sandbox-status\`\n` +
-                `- **Public probes:** \`/status\`, \`/catalog-count\`\n` +
-                `- **Other commands:** \`/linkedin-status\`, \`/linkedin-resume\`, \`/token-status\`, \`/watchdog-status\`, \`/investment-status\` (not integrated)`;
-            } else if (cmd === '/status') {
-              const [site, catalog] = await Promise.all([
-                probeUrl('https://vegasdiscountdepot.com/'),
-                probeUrl('https://vegasdiscountdepot.com/catalog.json')
-              ]);
-              if (isCron && site.ok && catalog.ok) return;
-              reply = `### Cloud Loop Status (${ts})\n` +
-                `| Target | HTTP | Latency | TLS | State |\n|---|---|---|---|---|\n` +
-                `| \`vegasdiscountdepot.com/\` | ${site.status} | ${site.ms}ms | ${site.tls} | ${site.ok ? '✅ UP' : '❌ DOWN'} |\n` +
-                `| \`/catalog.json\` | ${catalog.status} | ${catalog.ms}ms | ${catalog.tls} | ${catalog.ok ? '✅ UP' : '❌ DOWN'} |`;
-            } else if (cmd === '/catalog-count') {
-              const r = await probeUrl('https://vegasdiscountdepot.com/catalog.json');
-              let countInfo = 'Unavailable';
-              if (r.ok) {
-                try {
-                  const parsed = JSON.parse(r.body);
-                  const items = Array.isArray(parsed) ? parsed : (parsed?.items ?? parsed?.products);
-                  if (Array.isArray(items)) countInfo = `**${items.length}** items`;
-                } catch (error) {
-                  countInfo = 'Invalid JSON';
-                }
-              }
-              reply = `### 📦 Live Cloud Catalog (${ts})\n- **HTTP status:** ${r.status} (${r.ms}ms)\n- **Catalog size:** ${countInfo}`;
-            } else if (cmd === '/lockdown-check' || cmd === '/sandbox-status') {
-              const r = await probeUrl('https://vegasdiscountdepot.com/');
-              const h = r.headers || {};
-              reply = `### 🔒 Cloud Sandbox Posture (${ts})\n` +
-                `- **Runner:** GitHub-hosted; workflow token has contents read and issues write\n` +
-                `- **Negotiated protocol:** \`${r.tls}\`\n` +
-                `- **HSTS:** \`${h['strict-transport-security'] || 'missing'}\`\n` +
-                `- **X-Content-Type-Options:** \`${h['x-content-type-options'] || 'missing'}\`\n` +
-                `- **X-Frame-Options:** \`${h['x-frame-options'] || 'missing'}\``;
+              reply = '### ChatOps commands\n`/status`, `/catalog-count`, `/lockdown-check`, `/audit-muse`, `/iso-build`, `/token-status`, `/watchdog-status`, `/linkedin-status`, `/linkedin-resume`, `/sandbox-status`, `/investment-status`. External LinkedIn and investment integrations are not configured.';
             } else {
-              reply = `### Cloud Status for \`${cmd}\` (${ts})\nThis command is not integrated; no external state was checked or changed.`;
+              reply = `### ${cmd}\nNo live data source is configured; no external state was checked or changed.`;
             }
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              body: reply
-            });
+            await github.rest.issues.createComment({ ...context.repo, issue_number: Number(process.env.ISSUE_NUMBER), body: reply });
