@@ -1,3 +1,3 @@
-﻿module purego-hardened-chatops
+module purego-hardened-chatops
 
 go 1.22
