@@ -1,4 +1,4 @@
-name: ChatOps 24/7 Cloud-Only Loop
+name: ChatOps 24/7 Cloud-Only Loop (PR #4 Unified)
 
 on:
   issue_comment:
@@ -9,17 +9,31 @@ on:
     inputs:
       command:
         description: ChatOps command
-        required: true
+        required: false
         default: /status
+        type: string
       issue_number:
         description: Issue or pull request number for the reply
-        required: true
+        required: false
         default: '1'
+        type: string
+      run_iso_build:
+        description: Run hosted ISO build and health verification
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
   issues: write
   actions: read
+
+env:
+  CGO_ENABLED: '0'
+  STOREFRONT_URL: ${{ vars.STOREFRONT_URL || 'https://vegasdiscountdepot.com/' }}
+  CATALOG_URL: ${{ vars.CATALOG_URL || 'https://vegasdiscountdepot.com/catalog.json' }}
+  LINKEDIN_STATE: ${{ vars.LINKEDIN_STATE }}
+  INVESTMENT_STATE: ${{ vars.INVESTMENT_STATE }}
 
 jobs:
   cloud-chatops:
@@ -41,12 +55,12 @@ jobs:
             const body = context.eventName === 'issue_comment'
               ? context.payload.comment.body
               : context.eventName === 'workflow_dispatch'
-                ? context.payload.inputs.command : '/status';
+                ? (context.payload.inputs.command || '/status') : '/status';
             const command = (body || '').trim().split(/\s+/)[0].toLowerCase();
             const issue = context.eventName === 'issue_comment'
               ? String(context.payload.issue.number)
               : context.eventName === 'workflow_dispatch'
-                ? context.payload.inputs.issue_number : '1';
+                ? (context.payload.inputs.issue_number || '1') : '1';
             if (!/^[1-9]\d*$/.test(issue) || !Number.isSafeInteger(Number(issue))) {
               throw new Error('issue_number must be a positive issue number');
             }
@@ -64,11 +78,19 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Verify Go build
+        if: steps.command.outputs.name != ''
+        id: build
+        run: go build ./...
+      - name: Vet Go packages
+        if: steps.command.outputs.name != ''
+        id: vet
+        run: go vet ./...
       - name: Probe public services
         if: contains(fromJSON('["/status","/catalog-count","/lockdown-check","/sandbox-status"]'), steps.command.outputs.name)
         run: go run ./cmd/statusprobe -json "$RUNNER_TEMP/chatops-status.json"
       - name: Build and verify ISO on hosted runner
-        if: steps.command.outputs.name == '/iso-build'
+        if: steps.command.outputs.name != '' && (github.event_name != 'workflow_dispatch' || inputs.run_iso_build)
         id: iso
         run: |
           set -eu
@@ -123,6 +145,8 @@ jobs:
           ISSUE_NUMBER: ${{ steps.command.outputs.issue }}
           ISO_OUTCOME: ${{ steps.iso.outcome }}
           ARTIFACT_OUTCOME: ${{ steps.artifact.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          VET_OUTCOME: ${{ steps.vet.outcome }}
         with:
           script: |
             const fs = require('fs');
@@ -130,6 +154,10 @@ jobs:
             const cmd = process.env.COMMAND;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const now = new Date().toISOString();
+            const isoStatus = process.env.ISO_OUTCOME === 'success'
+              ? (process.env.ARTIFACT_OUTCOME === 'success' ? 'verified' : 'artifact upload failed')
+              : (process.env.ISO_OUTCOME || 'skipped');
+            const verification = `Build: ${process.env.BUILD_OUTCOME || 'skipped'} | Vet: ${process.env.VET_OUTCOME || 'skipped'} | ISO: ${isoStatus}`;
             let reply;
             let report;
             try { report = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/chatops-status.json`, 'utf8')); } catch {}
@@ -141,12 +169,16 @@ jobs:
               } else if (cmd === '/lockdown-check') {
                 const routes = report.lockdown.routes.map(r => `| ${r.url} | ${r.status || 'unavailable'} |`).join('\n');
                 const holding = report.lockdown.routes.filter(r => r.status === 403 && !r.error).length;
-                reply = `### Lockdown: ${report.lockdown.state} (${report.timestamp})\n${holding}/8 routes returned HTTP 403.\n\n| Route | HTTP |\n|---|---|\n${routes}`;
+                const breach = report.lockdown.routes.some(r => r.status !== 0 && r.status !== 403 && !r.error);
+                const state = breach ? 'BREACH' : holding === report.lockdown.routes.length ? 'HOLDING' : 'UNVERIFIED (network or DNS error)';
+                reply = `### Lockdown: ${state} (${report.timestamp})\n${holding}/8 routes returned HTTP 403.\n\n| Route | HTTP |\n|---|---|\n${routes}`;
               } else if (cmd === '/status') {
-                if (context.eventName === 'schedule' && report.storefront.state === 'UP' && report.catalog.state === 'UP' && report.catalog.count !== null && report.lockdown.state === 'HOLDING') return;
-                reply = `### Cloud status (${report.timestamp})\n- Storefront: ${report.storefront.state} (HTTP ${report.storefront.status})\n- Catalog: ${report.catalog.count === null ? 'unavailable' : report.catalog.count + ' items'}\n- Lockdown: ${report.lockdown.state}`;
+                if (context.eventName === 'schedule' && report.storefront.state === 'UP' && report.catalog.state === 'UP' && report.catalog.count !== null && report.lockdown.state === 'HOLDING' && isoStatus === 'verified') return;
+                const breach = report.lockdown.routes.some(r => r.status !== 0 && r.status !== 403 && !r.error);
+                const lockdown = breach ? 'BREACH' : report.lockdown.routes.every(r => r.status === 403 && !r.error) ? 'HOLDING' : 'UNVERIFIED (network or DNS error)';
+                reply = `### Cloud status (${report.timestamp})\n- Storefront: ${report.storefront.state} (HTTP ${report.storefront.status})\n- Catalog: ${report.catalog.count === null ? 'unavailable' : report.catalog.count + ' items'}\n- Lockdown: ${lockdown}`;
               } else {
-                reply = `### Sandbox status (${report.timestamp})\n- Runner: GitHub-hosted\n- Workflow permissions: contents read, issues write, actions read\n- Lockdown: ${report.lockdown.state}`;
+                reply = `### Sandbox status (${report.timestamp})\n- Runner: GitHub-hosted\n- Workflow permissions: contents read, issues write, actions read\n- Lockdown check: ${report.lockdown.routes.filter(r => r.status === 403 && !r.error).length}/8 verified`;
               }
             } else if (cmd === '/iso-build') {
               if (process.env.ISO_OUTCOME === 'success' && process.env.ARTIFACT_OUTCOME === 'success') {
@@ -154,7 +186,7 @@ jobs:
                 const health = fs.readFileSync('build/health.json', 'utf8').trim();
                 reply = `### ISO build complete\n- SHA-256: \`${sha}\`\n- HTTP health: \`${health}\`\n- HTTPS TLS 1.3 health: \`${fs.readFileSync('build/https-health.json', 'utf8').trim()}\`\n- [Run and artifact](${runUrl})`;
               } else {
-                reply = `### ISO build failed\nSee [workflow run](${runUrl}).`;
+                reply = `### ISO build ${process.env.ISO_OUTCOME === 'skipped' ? 'skipped' : 'failed'}\nSee [workflow run](${runUrl}).`;
               }
             } else if (cmd === '/watchdog-status') {
               try {
@@ -175,7 +207,12 @@ jobs:
               }
             } else if (cmd === '/help') {
               reply = '### ChatOps commands\n`/status`, `/catalog-count`, `/lockdown-check`, `/audit-muse`, `/iso-build`, `/token-status`, `/watchdog-status`, `/linkedin-status`, `/linkedin-resume`, `/sandbox-status`, `/investment-status`. External LinkedIn and investment integrations are not configured.';
+            } else if (cmd === '/linkedin-status' || cmd === '/linkedin-resume' || cmd === '/investment-status') {
+              const configured = cmd === '/investment-status' ? process.env.INVESTMENT_STATE : process.env.LINKEDIN_STATE;
+              const state = configured ? JSON.stringify(configured.slice(0, 200)).replace(/`/g, '\\u0060') : 'not configured';
+              reply = `### ${cmd}\nConfigured state: \`${state}\` (not independently verified). No external state was checked or changed.`;
             } else {
               reply = `### ${cmd}\nNo live data source is configured; no external state was checked or changed.`;
             }
+            reply += `\n\n- **Verification:** ${verification}\n- [Workflow run](${runUrl})`;
             await github.rest.issues.createComment({ ...context.repo, issue_number: Number(process.env.ISSUE_NUMBER), body: reply });

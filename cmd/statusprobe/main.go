@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -241,6 +242,18 @@ func writeFile(path string, data []byte) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+func configuredURL(name, fallback string) (string, error) {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Opaque != "" || parsed.Host == "" || parsed.Hostname() == "" || parsed.User != nil {
+		return "", fmt.Errorf("%s must be an absolute HTTPS URL without userinfo", name)
+	}
+	return value, nil
+}
+
 func run() error {
 	jsonPath := flag.String("json", "", "also write JSON report to this path")
 	markdownPath := flag.String("markdown", "", "write Markdown snapshot to this path")
@@ -252,7 +265,15 @@ func run() error {
 	if *jsonPath != "" && *jsonPath == *markdownPath {
 		return errors.New("JSON and Markdown paths must differ")
 	}
-	out := collect(newClient(*timeout), lockdownURLs, storefrontURL, catalogURL)
+	site, err := configuredURL("STOREFRONT_URL", storefrontURL)
+	if err != nil {
+		return err
+	}
+	catalog, err := configuredURL("CATALOG_URL", catalogURL)
+	if err != nil {
+		return err
+	}
+	out := collect(newClient(*timeout), lockdownURLs, site, catalog)
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return err
