@@ -1,0 +1,23 @@
+name: Go build and vet
+
+on:
+  push:
+    paths-ignore:
+      - 'status/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go build ./...
+      - run: go vet ./...

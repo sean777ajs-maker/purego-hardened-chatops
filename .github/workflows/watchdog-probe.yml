@@ -1,0 +1,42 @@
+name: Hourly watchdog probe
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: watchdog-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Collect live status
+        run: go run ./cmd/statusprobe -json status/server-status.json -markdown status/latest.md
+      - name: Publish snapshot
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add status/latest.md status/server-status.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update watchdog status [skip ci]"
+            if ! git push origin HEAD:main; then
+              git pull --rebase origin main
+              git push origin HEAD:main
+            fi
+          fi
