@@ -1,54 +1,54 @@
 {
-  "timestamp": "2026-11-15T16:53:53.290520704Z",
+  "timestamp": "2026-11-15T21:36:02.815467698Z",
   "lockdown": {
     "state": "HOLDING",
     "routes": [
       {
         "url": "https://hub.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 210,
+        "latency_ms": 163,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 238,
+        "latency_ms": 157,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://vegasdiscountdepot.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 224,
+        "latency_ms": 190,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://yard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 231,
+        "latency_ms": 162,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://dashboard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 238,
+        "latency_ms": 157,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://mateflowlabs.com/api/v1/credentials",
         "status": 403,
-        "latency_ms": 239,
+        "latency_ms": 157,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://vegasdiscountdepot.com/api/v1/credentials",
         "status": 403,
-        "latency_ms": 351,
+        "latency_ms": 190,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://yard.mateflowlabs.com/api/v1/credentials",
         "status": 403,
-        "latency_ms": 231,
+        "latency_ms": 162,
         "tls": "TLS 1.3"
       }
     ],
@@ -57,14 +57,14 @@
   "storefront": {
     "url": "https://vegasdiscountdepot.com/",
     "status": 200,
-    "latency_ms": 220,
+    "latency_ms": 272,
     "tls": "TLS 1.3",
     "state": "UP"
   },
   "catalog": {
     "url": "https://vegasdiscountdepot.com/catalog.json",
     "status": 200,
-    "latency_ms": 444,
+    "latency_ms": 329,
     "tls": "TLS 1.3",
     "state": "UP",
     "count": 1235
