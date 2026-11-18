@@ -1,54 +1,54 @@
 {
-  "timestamp": "2026-11-18T03:31:03.566997151Z",
+  "timestamp": "2026-11-18T12:52:27.001602143Z",
   "lockdown": {
     "state": "BREACH",
     "routes": [
       {
         "url": "https://hub.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 342,
+        "latency_ms": 92,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 339,
+        "latency_ms": 79,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://vegasdiscountdepot.com/god-mode-admin/GodModeAdmin.html",
-        "status": 503,
-        "latency_ms": 244,
+        "status": 200,
+        "latency_ms": 319,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://yard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 281,
+        "latency_ms": 88,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://dashboard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 306,
+        "latency_ms": 92,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://mateflowlabs.com/api/v1/credentials",
         "status": 403,
-        "latency_ms": 342,
+        "latency_ms": 79,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://vegasdiscountdepot.com/api/v1/credentials",
-        "status": 503,
-        "latency_ms": 243,
+        "status": 200,
+        "latency_ms": 319,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://yard.mateflowlabs.com/api/v1/credentials",
         "status": 403,
-        "latency_ms": 281,
+        "latency_ms": 92,
         "tls": "TLS 1.3"
       }
     ],
@@ -59,18 +59,18 @@
   },
   "storefront": {
     "url": "https://vegasdiscountdepot.com/",
-    "status": 503,
-    "latency_ms": 246,
+    "status": 200,
+    "latency_ms": 560,
     "tls": "TLS 1.3",
-    "state": "DOWN"
+    "state": "UP"
   },
   "catalog": {
     "url": "https://vegasdiscountdepot.com/catalog.json",
-    "status": 503,
-    "latency_ms": 245,
+    "status": 200,
+    "latency_ms": 557,
     "tls": "TLS 1.3",
-    "state": "DOWN",
+    "state": "UP",
     "count": null,
-    "count_error": "HTTP 503"
+    "count_error": "invalid JSON"
   }
 }
