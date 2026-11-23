@@ -1,84 +1,81 @@
 {
-  "timestamp": "2026-11-22T19:18:47.69155881Z",
+  "timestamp": "2026-11-23T00:41:24.334509431Z",
   "lockdown": {
     "state": "BREACH",
     "routes": [
       {
         "url": "https://hub.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 0,
-        "latency_ms": 314,
+        "latency_ms": 115,
         "tls": "none",
         "error": "Get \"https://hub.mateflowlabs.com/god-mode-admin/GodModeAdmin.html\": EOF"
       },
       {
         "url": "https://mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 314,
+        "latency_ms": 138,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://vegasdiscountdepot.com/god-mode-admin/GodModeAdmin.html",
-        "status": 200,
-        "latency_ms": 263,
+        "status": 403,
+        "latency_ms": 223,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://yard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 0,
-        "latency_ms": 317,
+        "latency_ms": 114,
         "tls": "none",
         "error": "Get \"https://yard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html\": EOF"
       },
       {
         "url": "https://dashboard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 0,
-        "latency_ms": 314,
+        "latency_ms": 138,
         "tls": "none",
         "error": "Get \"https://dashboard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html\": EOF"
       },
       {
         "url": "https://mateflowlabs.com/api/v1/credentials",
         "status": 403,
-        "latency_ms": 314,
+        "latency_ms": 131,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://vegasdiscountdepot.com/api/v1/credentials",
-        "status": 200,
-        "latency_ms": 273,
+        "status": 403,
+        "latency_ms": 219,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://yard.mateflowlabs.com/api/v1/credentials",
         "status": 0,
-        "latency_ms": 316,
+        "latency_ms": 116,
         "tls": "none",
         "error": "Get \"https://yard.mateflowlabs.com/api/v1/credentials\": EOF"
       }
     ],
     "failing_routes": [
       "https://hub.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
-      "https://vegasdiscountdepot.com/god-mode-admin/GodModeAdmin.html",
       "https://yard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
       "https://dashboard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
-      "https://vegasdiscountdepot.com/api/v1/credentials",
       "https://yard.mateflowlabs.com/api/v1/credentials"
     ]
   },
   "storefront": {
     "url": "https://vegasdiscountdepot.com/",
     "status": 200,
-    "latency_ms": 276,
+    "latency_ms": 214,
     "tls": "TLS 1.3",
     "state": "UP"
   },
   "catalog": {
     "url": "https://vegasdiscountdepot.com/catalog.json",
     "status": 200,
-    "latency_ms": 347,
+    "latency_ms": 240,
     "tls": "TLS 1.3",
     "state": "UP",
-    "count": null,
-    "count_error": "invalid JSON"
+    "count": 14
   }
 }
