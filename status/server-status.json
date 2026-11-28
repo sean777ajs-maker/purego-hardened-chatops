@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-28T10:02:22.528032677Z",
+  "timestamp": "2026-11-28T18:44:41.024292058Z",
   "lockdown": {
     "state": "BREACH",
     "routes": [
@@ -13,13 +13,13 @@
       {
         "url": "https://mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 116,
+        "latency_ms": 236,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://vegasdiscountdepot.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 232,
+        "latency_ms": 367,
         "tls": "TLS 1.3"
       },
       {
@@ -39,13 +39,13 @@
       {
         "url": "https://mateflowlabs.com/api/v1/credentials",
         "status": 403,
-        "latency_ms": 116,
+        "latency_ms": 236,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://vegasdiscountdepot.com/api/v1/credentials",
         "status": 403,
-        "latency_ms": 287,
+        "latency_ms": 236,
         "tls": "TLS 1.3"
       },
       {
@@ -53,7 +53,7 @@
         "status": 0,
         "latency_ms": 10000,
         "tls": "none",
-        "error": "Get \"https://yard.mateflowlabs.com/api/v1/credentials\": dial tcp 217.216.47.63:443: i/o timeout (Client.Timeout exceeded while awaiting headers)"
+        "error": "Get \"https://yard.mateflowlabs.com/api/v1/credentials\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
       }
     ],
     "failing_routes": [
@@ -66,14 +66,14 @@
   "storefront": {
     "url": "https://vegasdiscountdepot.com/",
     "status": 200,
-    "latency_ms": 286,
+    "latency_ms": 367,
     "tls": "TLS 1.3",
     "state": "UP"
   },
   "catalog": {
     "url": "https://vegasdiscountdepot.com/catalog.json",
     "status": 200,
-    "latency_ms": 305,
+    "latency_ms": 411,
     "tls": "TLS 1.3",
     "state": "UP",
     "count": 571
