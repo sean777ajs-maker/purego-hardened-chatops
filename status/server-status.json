@@ -1,59 +1,59 @@
 {
-  "timestamp": "2026-11-28T01:23:48.278954972Z",
+  "timestamp": "2026-11-28T10:02:22.528032677Z",
   "lockdown": {
     "state": "BREACH",
     "routes": [
       {
         "url": "https://hub.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 0,
-        "latency_ms": 116,
+        "latency_ms": 10000,
         "tls": "none",
-        "error": "Get \"https://hub.mateflowlabs.com/god-mode-admin/GodModeAdmin.html\": EOF"
+        "error": "Get \"https://hub.mateflowlabs.com/god-mode-admin/GodModeAdmin.html\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
       },
       {
         "url": "https://mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 132,
+        "latency_ms": 116,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://vegasdiscountdepot.com/god-mode-admin/GodModeAdmin.html",
         "status": 403,
-        "latency_ms": 191,
+        "latency_ms": 232,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://yard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 0,
-        "latency_ms": 134,
+        "latency_ms": 10000,
         "tls": "none",
-        "error": "Get \"https://yard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html\": EOF"
+        "error": "Get \"https://yard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
       },
       {
         "url": "https://dashboard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html",
         "status": 0,
-        "latency_ms": 116,
+        "latency_ms": 10000,
         "tls": "none",
-        "error": "Get \"https://dashboard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html\": EOF"
+        "error": "Get \"https://dashboard.mateflowlabs.com/god-mode-admin/GodModeAdmin.html\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
       },
       {
         "url": "https://mateflowlabs.com/api/v1/credentials",
         "status": 403,
-        "latency_ms": 137,
+        "latency_ms": 116,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://vegasdiscountdepot.com/api/v1/credentials",
         "status": 403,
-        "latency_ms": 197,
+        "latency_ms": 287,
         "tls": "TLS 1.3"
       },
       {
         "url": "https://yard.mateflowlabs.com/api/v1/credentials",
         "status": 0,
-        "latency_ms": 137,
+        "latency_ms": 10000,
         "tls": "none",
-        "error": "Get \"https://yard.mateflowlabs.com/api/v1/credentials\": EOF"
+        "error": "Get \"https://yard.mateflowlabs.com/api/v1/credentials\": dial tcp 217.216.47.63:443: i/o timeout (Client.Timeout exceeded while awaiting headers)"
       }
     ],
     "failing_routes": [
@@ -66,16 +66,16 @@
   "storefront": {
     "url": "https://vegasdiscountdepot.com/",
     "status": 200,
-    "latency_ms": 199,
+    "latency_ms": 286,
     "tls": "TLS 1.3",
     "state": "UP"
   },
   "catalog": {
     "url": "https://vegasdiscountdepot.com/catalog.json",
     "status": 200,
-    "latency_ms": 268,
+    "latency_ms": 305,
     "tls": "TLS 1.3",
     "state": "UP",
-    "count": 553
+    "count": 571
   }
 }
